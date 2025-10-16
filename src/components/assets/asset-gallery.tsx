@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { Asset, AssetType } from '@/lib/types/asset-repository'
 import { formatDistanceToNow } from 'date-fns'
+import AssetImage from '@/components/ui/asset-image'
 
 interface AssetGalleryProps {
   assets: Asset[]
@@ -41,19 +42,13 @@ export default function AssetGallery({
 }: AssetGalleryProps) {
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set())
 
-  console.log('AssetGallery: Received props:', { assetsCount: assets.length, loading, viewMode })
 
-  // Always show a debug header to help identify the issue
-  const debugInfo = (
-    <div className="bg-yellow-900/20 border border-yellow-600 text-yellow-400 p-3 mb-4 rounded">
-      <strong>Debug Info:</strong> Assets: {assets.length}, Loading: {loading ? 'true' : 'false'}, ViewMode: {viewMode}
-      {assets.length > 0 && (
-        <div className="mt-1 text-sm">
-          First asset: {assets[0]?.name || 'Unnamed'} (ID: {assets[0]?.id})
-        </div>
-      )}
+  // Show debug info only in development mode
+  const debugInfo = process.env.NODE_ENV === 'development' ? (
+    <div className="bg-yellow-900/20 border border-yellow-600 text-yellow-400 p-2 mb-4 rounded text-sm">
+      Dev: {assets.length} assets, {loading ? 'loading' : 'loaded'}
     </div>
-  )
+  ) : null
 
   const getAssetIcon = (assetType: AssetType) => {
     switch (assetType) {
@@ -174,19 +169,13 @@ export default function AssetGallery({
               <CardContent className="p-4">
                 {/* Asset Preview */}
                 <div className="aspect-square bg-gray-700 rounded-lg mb-3 overflow-hidden relative">
-                  {asset.thumbnail_url ? (
-                    <img
-                      src={asset.thumbnail_url}
-                      alt={asset.name || 'Asset'}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${getAssetTypeColor(asset.asset_type)}`}>
-                        {getAssetIcon(asset.asset_type)}
-                      </div>
-                    </div>
-                  )}
+                  <AssetImage
+                    src={asset.thumbnail_url}
+                    alt={asset.name || 'Asset'}
+                    assetType={asset.asset_type}
+                    className="w-full h-full object-cover"
+                    fallbackClassName="w-12 h-12"
+                  />
 
                   {/* Overlay */}
                   <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
@@ -304,19 +293,13 @@ export default function AssetGallery({
               <div className="flex items-center space-x-4">
                 {/* Thumbnail */}
                 <div className="w-16 h-16 bg-gray-700 rounded-lg overflow-hidden flex-shrink-0">
-                  {asset.thumbnail_url ? (
-                    <img
-                      src={asset.thumbnail_url}
-                      alt={asset.name || 'Asset'}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center">
-                      <div className={`w-8 h-8 rounded flex items-center justify-center ${getAssetTypeColor(asset.asset_type)}`}>
-                        {getAssetIcon(asset.asset_type)}
-                      </div>
-                    </div>
-                  )}
+                  <AssetImage
+                    src={asset.thumbnail_url}
+                    alt={asset.name || 'Asset'}
+                    assetType={asset.asset_type}
+                    className="w-full h-full object-cover"
+                    fallbackClassName="w-8 h-8"
+                  />
                 </div>
 
                 {/* Asset Info */}

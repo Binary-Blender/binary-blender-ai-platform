@@ -54,19 +54,20 @@ export default function AssetsPage() {
 
   // Load projects on mount
   useEffect(() => {
-    console.log('Assets page: useEffect for loadProjects triggered, session:', session)
-    loadProjects()
-  }, [session])
+    if (session) {
+      loadProjects()
+    }
+  }, [session?.user?.id])
 
   // Load assets when project or folder changes, or initially for unorganized assets
   useEffect(() => {
-    console.log('Assets page: useEffect for loadAssets triggered, session:', session, 'selectedProject:', selectedProject, 'currentFolder:', currentFolder)
-    loadAssets()
-  }, [selectedProject, currentFolder, session])
+    if (session) {
+      loadAssets()
+    }
+  }, [selectedProject?.id, currentFolder?.id, session?.user?.id])
 
   // Filter and sort assets
   useEffect(() => {
-    console.log('Assets page: Filter useEffect triggered with assets:', assets.length, 'assets')
     let filtered = [...assets]
 
     // Search filter
@@ -112,26 +113,20 @@ export default function AssetsPage() {
       }
     })
 
-    console.log('Assets page: Setting filteredAssets to:', filtered.length, 'assets')
     setFilteredAssets(filtered)
   }, [assets, searchQuery, selectedAssetType, sortBy, sortOrder, showFavorites])
 
   const loadProjects = async () => {
     try {
-      console.log('Assets page: loadProjects called, making API request to /api/projects')
       const response = await fetch('/api/projects')
-      console.log('Assets page: loadProjects response status:', response.status)
       const data = await response.json()
-      console.log('Assets page: loadProjects response data:', data)
       if (data.success) {
         setProjects(data.data)
-        console.log('Assets page: Projects set, count:', data.data.length)
         if (data.data.length > 0 && !selectedProject) {
           setSelectedProject(data.data[0])
-          console.log('Assets page: Selected first project:', data.data[0])
         }
       } else {
-        console.error('Assets page: loadProjects failed:', data.error)
+        console.error('Error loading projects:', data.error)
       }
     } catch (error) {
       console.error('Error loading projects:', error)
@@ -148,29 +143,21 @@ export default function AssetsPage() {
 
       if (selectedProject) {
         params.append('project_id', selectedProject.id)
-        console.log('Assets page: loadAssets for project:', selectedProject.id)
-
         if (currentFolder) {
           params.append('folder_id', currentFolder.id)
-          console.log('Assets page: loadAssets for folder:', currentFolder.id)
         }
       } else {
         // Load unorganized assets (assets without a project)
         params.append('unorganized', 'true')
-        console.log('Assets page: loadAssets for unorganized assets')
       }
 
       const url = `/api/assets?${params}`
-      console.log('Assets page: loadAssets making API request to:', url)
       const response = await fetch(url)
-      console.log('Assets page: loadAssets response status:', response.status)
       const data = await response.json()
-      console.log('Assets page: loadAssets response data:', data)
       if (data.success) {
         setAssets(data.data)
-        console.log('Assets page: Assets set, count:', data.data.length)
       } else {
-        console.error('Assets page: loadAssets failed:', data.error)
+        console.error('Error loading assets:', data.error)
       }
     } catch (error) {
       console.error('Error loading assets:', error)
@@ -318,12 +305,6 @@ export default function AssetsPage() {
 
                 {/* Asset Gallery */}
                 <div className="flex-1 overflow-auto">
-                  {console.log('Assets page: Rendering AssetGallery with props:', {
-                    assetsCount: filteredAssets.length,
-                    loading,
-                    viewMode,
-                    firstAsset: filteredAssets[0]?.id
-                  })}
                   <AssetGallery
                     assets={filteredAssets}
                     viewMode={viewMode}
@@ -343,12 +324,6 @@ export default function AssetsPage() {
 
                 {/* Asset Gallery for Unorganized Assets */}
                 <div className="flex-1 overflow-auto">
-                  {console.log('Assets page: Rendering Unorganized AssetGallery with props:', {
-                    assetsCount: filteredAssets.length,
-                    loading,
-                    viewMode,
-                    firstAsset: filteredAssets[0]?.id
-                  })}
                   <AssetGallery
                     assets={filteredAssets}
                     viewMode={viewMode}

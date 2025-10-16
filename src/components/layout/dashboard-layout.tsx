@@ -47,8 +47,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
 
-  console.log('DashboardLayout: status=', status, 'session=', session)
-
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin')
@@ -56,7 +54,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   }, [status, router])
 
   if (status === 'loading') {
-    console.log('DashboardLayout: Showing loading spinner')
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-binary-orange"></div>
