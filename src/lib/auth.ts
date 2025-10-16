@@ -88,7 +88,7 @@ export const authOptions: NextAuthOptions = {
         session.user.skool_user_id = token.skool_user_id as string
         session.user.membership_tier = token.membership_tier as string
 
-        // Try to get the actual UUID from the database with timeout
+        // Try to get the actual UUID from the database with short timeout
         try {
           const dbUser = await Promise.race([
             syncUserWithDatabase({
@@ -100,7 +100,7 @@ export const authOptions: NextAuthOptions = {
               membership_tier: token.membership_tier as string
             }),
             new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Database sync timeout')), 3000)
+              setTimeout(() => reject(new Error('Database sync timeout')), 1000)
             )
           ])
 

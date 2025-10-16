@@ -9,9 +9,10 @@ import { ApiResponse } from '@/lib/types/asset-repository';
 // ============================================================================
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -24,7 +25,7 @@ export async function POST(
     const { data: existingPrompt, error: fetchError } = await supabaseAdmin
       .from('prompts')
       .select('id, times_used')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -51,7 +52,7 @@ export async function POST(
         last_used_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .select('id, times_used, last_used_at')
       .single();
@@ -67,7 +68,7 @@ export async function POST(
     return NextResponse.json<ApiResponse>({
       success: true,
       data: {
-        id: params.id,
+        id: id,
         times_used: updatedPrompt.times_used,
         last_used_at: updatedPrompt.last_used_at,
       }

@@ -13,9 +13,10 @@ import {
 // ============================================================================
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -28,7 +29,7 @@ export async function POST(
     const { data: asset, error: assetError } = await supabaseAdmin
       .from('assets')
       .select('id, asset_type, source_app, source_tool, generation_params, name')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .eq('status', 'active')
       .maybeSingle();
@@ -58,7 +59,7 @@ export async function POST(
     }
 
     // Build redirect URL with preset parameters
-    const redirectUrl = buildRegenerateRedirectUrl(sourceApp, asset.generation_params, asset.id);
+    const redirectUrl = buildRegenerateRedirectUrl(sourceApp, asset.generation_params, id);
 
     const response: AssetRegenerateResponse = {
       source_app: sourceApp,

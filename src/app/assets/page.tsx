@@ -33,6 +33,7 @@ import AssetGallery from '@/components/assets/asset-gallery'
 import AssetDetailsModal from '@/components/assets/asset-details-modal'
 import FolderNavigation from '@/components/assets/folder-navigation'
 import SearchFilter from '@/components/assets/search-filter'
+import CreateProjectModal from '@/components/assets/create-project-modal'
 
 export default function AssetsPage() {
   const { data: session } = useSession()
@@ -49,6 +50,7 @@ export default function AssetsPage() {
   const [sortBy, setSortBy] = useState<'created_at' | 'name' | 'rating'>('created_at')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
   const [showFavorites, setShowFavorites] = useState(false)
+  const [showCreateProject, setShowCreateProject] = useState(false)
 
   // Load projects on mount
   useEffect(() => {
@@ -229,6 +231,7 @@ export default function AssetsPage() {
               </Button>
               <Button
                 size="sm"
+                onClick={() => setShowCreateProject(true)}
                 className="bg-binary-orange hover:bg-binary-orange/90"
               >
                 <Plus className="w-4 h-4 mr-2" />
@@ -367,6 +370,13 @@ export default function AssetsPage() {
             onUpdate={loadAssets}
           />
         )}
+
+        {/* Create Project Modal */}
+        <CreateProjectModal
+          open={showCreateProject}
+          onClose={() => setShowCreateProject(false)}
+          onProjectCreated={loadProjects}
+        />
       </div>
     </DashboardLayout>
   )

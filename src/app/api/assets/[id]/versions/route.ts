@@ -13,9 +13,10 @@ import {
 // ============================================================================
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -45,7 +46,7 @@ export async function POST(
     const { data: asset, error: assetError } = await supabaseAdmin
       .from('assets')
       .select('id, user_id')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .eq('status', 'active')
       .maybeSingle();
@@ -69,7 +70,7 @@ export async function POST(
     const { data: lastVersion, error: versionError } = await supabaseAdmin
       .from('asset_versions')
       .select('version_number')
-      .eq('asset_id', params.id)
+      .eq('asset_id', id)
       .order('version_number', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -88,7 +89,7 @@ export async function POST(
     const { data: newVersion, error: createError } = await supabaseAdmin
       .from('asset_versions')
       .insert({
-        asset_id: params.id,
+        asset_id: id,
         version_number: nextVersionNumber,
         file_url: body.file_url,
         thumbnail_url: body.thumbnail_url || null,
@@ -126,9 +127,10 @@ export async function POST(
 // ============================================================================
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -141,7 +143,7 @@ export async function GET(
     const { data: asset, error: assetError } = await supabaseAdmin
       .from('assets')
       .select('id')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -164,7 +166,7 @@ export async function GET(
     const { data: versions, error: versionsError } = await supabaseAdmin
       .from('asset_versions')
       .select('*')
-      .eq('asset_id', params.id)
+      .eq('asset_id', id)
       .order('version_number', { ascending: false });
 
     if (versionsError) {

@@ -14,9 +14,10 @@ import {
 // ============================================================================
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -29,7 +30,7 @@ export async function GET(
     const { data: asset, error: assetError } = await supabaseAdmin
       .from('assets')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 

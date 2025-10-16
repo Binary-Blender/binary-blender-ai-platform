@@ -13,9 +13,10 @@ import {
 // ============================================================================
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -34,7 +35,7 @@ export async function GET(
           user_id
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('projects.user_id', session.user.id)
       .maybeSingle();
 
@@ -75,9 +76,10 @@ export async function GET(
 // ============================================================================
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -98,7 +100,7 @@ export async function PATCH(
           user_id
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('projects.user_id', session.user.id)
       .maybeSingle();
 
@@ -132,7 +134,7 @@ export async function PATCH(
         .select('id')
         .eq('project_id', existingFolder.project_id)
         .eq('path', newPath)
-        .neq('id', params.id)
+        .neq('id', id)
         .maybeSingle();
 
       if (duplicateFolder) {
@@ -181,7 +183,7 @@ export async function PATCH(
     const { data: updatedFolder, error: updateError } = await supabaseAdmin
       .from('folders')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .select('*')
       .single();
 
@@ -212,9 +214,10 @@ export async function PATCH(
 // ============================================================================
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -233,7 +236,7 @@ export async function DELETE(
           user_id
         )
       `)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('projects.user_id', session.user.id)
       .maybeSingle();
 
@@ -256,7 +259,7 @@ export async function DELETE(
     const { error: assetMoveError } = await supabaseAdmin
       .from('assets')
       .update({ folder_id: existingFolder.parent_folder_id })
-      .eq('folder_id', params.id);
+      .eq('folder_id', id);
 
     if (assetMoveError) {
       console.error('Error moving assets from deleted folder:', assetMoveError);
@@ -274,7 +277,7 @@ export async function DELETE(
         // Update paths to remove the deleted folder from the hierarchy
         // This would require a more complex update, but for now we'll handle it simply
       })
-      .eq('parent_folder_id', params.id);
+      .eq('parent_folder_id', id);
 
     if (folderMoveError) {
       console.error('Error moving child folders:', folderMoveError);
@@ -288,7 +291,7 @@ export async function DELETE(
     const { error: deleteError } = await supabaseAdmin
       .from('folders')
       .delete()
-      .eq('id', params.id);
+      .eq('id', id);
 
     if (deleteError) {
       console.error('Error deleting folder:', deleteError);
@@ -301,7 +304,7 @@ export async function DELETE(
     return NextResponse.json<ApiResponse>({
       success: true,
       data: {
-        id: params.id,
+        id: id,
         action: 'deleted',
         assets_moved_to_parent: true,
         child_folders_moved_to_parent: true

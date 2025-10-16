@@ -13,9 +13,10 @@ import {
 // ============================================================================
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -28,7 +29,7 @@ export async function GET(
     const { data: prompt, error: promptError } = await supabaseAdmin
       .from('prompts')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -66,9 +67,10 @@ export async function GET(
 // ============================================================================
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -83,7 +85,7 @@ export async function PATCH(
     const { data: existingPrompt, error: fetchError } = await supabaseAdmin
       .from('prompts')
       .select('id, name')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -109,7 +111,7 @@ export async function PATCH(
         .select('id')
         .eq('user_id', session.user.id)
         .eq('name', body.name.trim())
-        .neq('id', params.id)
+        .neq('id', id)
         .maybeSingle();
 
       if (duplicatePrompt) {
@@ -136,7 +138,7 @@ export async function PATCH(
     const { data: updatedPrompt, error: updateError } = await supabaseAdmin
       .from('prompts')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .select('*')
       .single();
@@ -168,9 +170,10 @@ export async function PATCH(
 // ============================================================================
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -183,7 +186,7 @@ export async function DELETE(
     const { data: existingPrompt, error: fetchError } = await supabaseAdmin
       .from('prompts')
       .select('id')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -206,7 +209,7 @@ export async function DELETE(
     const { error: deleteError } = await supabaseAdmin
       .from('prompts')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id);
 
     if (deleteError) {
@@ -220,7 +223,7 @@ export async function DELETE(
     return NextResponse.json<ApiResponse>({
       success: true,
       data: {
-        id: params.id,
+        id: id,
         action: 'deleted'
       }
     });

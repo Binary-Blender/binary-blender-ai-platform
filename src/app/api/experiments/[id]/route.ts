@@ -13,9 +13,10 @@ import {
 // ============================================================================
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -28,7 +29,7 @@ export async function GET(
     const { data: experiment, error: experimentError } = await supabaseAdmin
       .from('experiments')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -86,9 +87,10 @@ export async function GET(
 // ============================================================================
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -103,7 +105,7 @@ export async function PATCH(
     const { data: existingExperiment, error: fetchError } = await supabaseAdmin
       .from('experiments')
       .select('id')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -156,7 +158,7 @@ export async function PATCH(
     const { data: updatedExperiment, error: updateError } = await supabaseAdmin
       .from('experiments')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .select('*')
       .single();
@@ -188,9 +190,10 @@ export async function PATCH(
 // ============================================================================
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json<ApiResponse>({
@@ -203,7 +206,7 @@ export async function DELETE(
     const { data: existingExperiment, error: fetchError } = await supabaseAdmin
       .from('experiments')
       .select('id')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -226,7 +229,7 @@ export async function DELETE(
     const { error: deleteError } = await supabaseAdmin
       .from('experiments')
       .delete()
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id);
 
     if (deleteError) {
@@ -240,7 +243,7 @@ export async function DELETE(
     return NextResponse.json<ApiResponse>({
       success: true,
       data: {
-        id: params.id,
+        id: id,
         action: 'deleted'
       }
     });
