@@ -2,88 +2,123 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
-import { generateImageThumbnail, storageService } from '@/lib/storage';
-import {
-  ApiResponse,
-  Asset,
-  AssetType
-} from '@/lib/types/asset-repository';
+import { generateThumbnail } from '@/lib/thumbnail-generator';
 
 // ============================================================================
 // POST /api/upload/complete - Complete file upload and process asset
 // ============================================================================
+interface UploadCompleteBody {
+  asset_id: string;
+  file_key: string;
+  thumbnail_key?: string;
+  file_url: string;
+  name?: string;
+  notes?: string;
+  tags?: string[];
+  project_id?: string;
+  folder_id?: string;
+  generation_params?: any;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json<ApiResponse>({
+      return NextResponse.json({
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'Authentication required' }
       }, { status: 401 });
     }
 
-    const body = await req.json();
-    const { asset_id, success: uploadSuccess, file_url, metadata } = body;
+    const body: UploadCompleteBody = await req.json();
 
     // Validate required fields
-    if (!asset_id) {
-      return NextResponse.json<ApiResponse>({
+    if (!body.asset_id || !body.file_key || !body.file_url) {
+      return NextResponse.json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'asset_id is required' }
+        error: { code: 'BAD_REQUEST', message: 'asset_id, file_key, and file_url are required' }
       }, { status: 400 });
     }
 
-    // Fetch the pending asset record
-    const { data: asset, error: assetError } = await supabaseAdmin
+    // Fetch the existing asset record to get its details
+    const { data: existingAsset, error: fetchError } = await supabaseAdmin
       .from('assets')
       .select('*')
-      .eq('id', asset_id)
+      .eq('id', body.asset_id)
       .eq('user_id', session.user.id)
-      .eq('status', 'pending')
-      .maybeSingle();
+      .single();
 
-    if (assetError) {
-      console.error('Error fetching pending asset:', assetError);
-      return NextResponse.json<ApiResponse>({
+    if (fetchError || !existingAsset) {
+      return NextResponse.json({
         success: false,
-        error: { code: 'DATABASE_ERROR', message: 'Failed to fetch upload session' }
-      }, { status: 500 });
-    }
-
-    if (!asset) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Upload session not found or already completed' }
+        error: { code: 'NOT_FOUND', message: 'Upload session not found' }
       }, { status: 404 });
     }
 
-    if (!uploadSuccess) {
-      // Mark the asset as failed and return error
-      await supabaseAdmin
-        .from('assets')
-        .update({
-          status: 'deleted', // Mark as deleted since upload failed
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', asset_id);
+    // Generate thumbnail if asset type supports it
+    let thumbnailUrl = existingAsset.thumbnail_url;
+    if (body.thumbnail_key && ['image', 'video', 'audio'].includes(existingAsset.asset_type)) {
+      console.log(`🖼️ Generating thumbnail for ${existingAsset.asset_type} asset...`);
 
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: { code: 'UPLOAD_FAILED', message: 'File upload failed' }
-      }, { status: 400 });
+      const thumbnailResult = await generateThumbnail(
+        existingAsset.asset_type as 'image' | 'video' | 'audio',
+        body.file_url,
+        body.thumbnail_key
+      );
+
+      if (thumbnailResult.success) {
+        thumbnailUrl = thumbnailResult.thumbnailUrl;
+        console.log(`✅ Thumbnail generated: ${thumbnailUrl}`);
+      } else {
+        console.warn(`⚠️ Thumbnail generation failed: ${thumbnailResult.error}`);
+        // Continue without thumbnail - not a fatal error
+      }
     }
 
-    // Process the uploaded file
-    const processedAsset = await processUploadedFile(asset, file_url, metadata);
+    // Update the asset record with complete information
+    const updateData = {
+      file_url: body.file_url,
+      thumbnail_url: thumbnailUrl,
+      name: body.name || existingAsset.name,
+      notes: body.notes || existingAsset.notes,
+      tags: body.tags || existingAsset.tags,
+      project_id: body.project_id !== undefined ? body.project_id : existingAsset.project_id,
+      folder_id: body.folder_id !== undefined ? body.folder_id : existingAsset.folder_id,
+      generation_params: {
+        ...existingAsset.generation_params,
+        ...body.generation_params,
+        upload_completed_at: new Date().toISOString(),
+      },
+      status: 'active', // Mark as active now that upload is complete
+      updated_at: new Date().toISOString(),
+    };
 
-    return NextResponse.json<ApiResponse<Asset>>({
+    const { data: updatedAsset, error: updateError } = await supabaseAdmin
+      .from('assets')
+      .update(updateData)
+      .eq('id', body.asset_id)
+      .eq('user_id', session.user.id)
+      .select('*')
+      .single();
+
+    if (updateError) {
+      console.error('Error updating asset:', updateError);
+      return NextResponse.json({
+        success: false,
+        error: { code: 'DATABASE_ERROR', message: 'Failed to update asset' }
+      }, { status: 500 });
+    }
+
+    console.log(`✅ Upload completed for asset ${body.asset_id}`);
+
+    return NextResponse.json({
       success: true,
-      data: processedAsset
+      data: updatedAsset
     });
 
   } catch (error) {
-    console.error('Error in POST /api/upload/complete:', error);
-    return NextResponse.json<ApiResponse>({
+    console.error('Error completing upload:', error);
+    return NextResponse.json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Failed to complete upload' }
     }, { status: 500 });
@@ -91,144 +126,56 @@ export async function POST(req: NextRequest) {
 }
 
 // ============================================================================
-// Helper Functions
+// DELETE /api/upload/complete - Cancel incomplete upload
 // ============================================================================
-
-async function processUploadedFile(
-  asset: any,
-  finalFileUrl?: string,
-  metadata?: any
-): Promise<Asset> {
+export async function DELETE(req: NextRequest) {
   try {
-    const updateData: any = {
-      status: 'active',
-      updated_at: new Date().toISOString(),
-    };
-
-    // Use provided file URL or keep the existing one
-    if (finalFileUrl) {
-      updateData.file_url = finalFileUrl;
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required' }
+      }, { status: 401 });
     }
 
-    // Update metadata if provided
-    if (metadata) {
-      if (metadata.width && metadata.height) {
-        updateData.dimensions = {
-          width: metadata.width,
-          height: metadata.height,
-          ...(metadata.fps && { fps: metadata.fps }),
-        };
-      }
-      if (metadata.duration) {
-        updateData.duration_seconds = metadata.duration;
-      }
-      if (metadata.file_size) {
-        updateData.file_size_bytes = metadata.file_size;
-      }
+    const { searchParams } = new URL(req.url);
+    const assetId = searchParams.get('asset_id');
+
+    if (!assetId) {
+      return NextResponse.json({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'asset_id is required' }
+      }, { status: 400 });
     }
 
-    // Generate thumbnail for images
-    if (asset.asset_type === 'image' && asset.file_url) {
-      try {
-        const thumbnailUrl = await generateThumbnailForAsset(
-          asset.user_id,
-          asset.id,
-          asset.file_url,
-          asset.asset_type
-        );
-        if (thumbnailUrl) {
-          updateData.thumbnail_url = thumbnailUrl;
-        }
-      } catch (thumbnailError) {
-        console.error('Error generating thumbnail:', thumbnailError);
-        // Don't fail the upload for thumbnail generation errors
-      }
-    }
-
-    // Generate a proper name if still using the placeholder
-    if (asset.name?.startsWith('Uploading ')) {
-      updateData.name = generateAssetName(asset.asset_type, asset.mime_type);
-    }
-
-    // Update the asset record
-    const { data: updatedAsset, error: updateError } = await supabaseAdmin
+    // Delete the incomplete asset record
+    const { error: deleteError } = await supabaseAdmin
       .from('assets')
-      .update(updateData)
-      .eq('id', asset.id)
-      .select('*')
-      .single();
+      .delete()
+      .eq('id', assetId)
+      .eq('user_id', session.user.id)
+      .eq('status', 'pending'); // Only delete if still pending
 
-    if (updateError) {
-      console.error('Error updating asset after upload:', updateError);
-      throw new Error('Failed to update asset');
+    if (deleteError) {
+      console.error('Error deleting incomplete upload:', deleteError);
+      return NextResponse.json({
+        success: false,
+        error: { code: 'DATABASE_ERROR', message: 'Failed to cancel upload' }
+      }, { status: 500 });
     }
 
-    return updatedAsset;
+    console.log(`🗑️ Cancelled upload for asset ${assetId}`);
+
+    return NextResponse.json({
+      success: true,
+      data: { message: 'Upload cancelled successfully' }
+    });
 
   } catch (error) {
-    console.error('Error processing uploaded file:', error);
-
-    // Mark the asset as failed
-    await supabaseAdmin
-      .from('assets')
-      .update({
-        status: 'deleted',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', asset.id);
-
-    throw error;
+    console.error('Error cancelling upload:', error);
+    return NextResponse.json({
+      success: false,
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to cancel upload' }
+    }, { status: 500 });
   }
-}
-
-async function generateThumbnailForAsset(
-  userId: string,
-  assetId: string,
-  fileUrl: string,
-  assetType: AssetType
-): Promise<string | null> {
-  try {
-    if (assetType !== 'image') {
-      return null; // Only generate thumbnails for images for now
-    }
-
-    // Download the original file
-    const response = await fetch(fileUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to download file: ${response.statusText}`);
-    }
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-
-    // Generate thumbnail
-    const thumbnailUrl = await generateImageThumbnail(buffer, userId, assetId);
-    return thumbnailUrl;
-
-  } catch (error) {
-    console.error('Error generating thumbnail:', error);
-    return null;
-  }
-}
-
-function generateAssetName(assetType: AssetType, mimeType?: string): string {
-  const timestamp = new Date().toISOString().slice(0, 16).replace(/[T:]/g, '-');
-
-  let typeLabel = assetType;
-  if (mimeType) {
-    const typeMap: Record<string, string> = {
-      'image/jpeg': 'JPEG Image',
-      'image/png': 'PNG Image',
-      'image/webp': 'WebP Image',
-      'image/gif': 'GIF Image',
-      'video/mp4': 'MP4 Video',
-      'video/mov': 'MOV Video',
-      'audio/mp3': 'MP3 Audio',
-      'audio/wav': 'WAV Audio',
-      'text/plain': 'Text File',
-      'application/json': 'JSON File',
-    };
-    typeLabel = typeMap[mimeType] || assetType;
-  }
-
-  return `${typeLabel} ${timestamp}`;
 }

@@ -72,7 +72,7 @@ export async function GET(
           file_size_bytes,
           created_at
         `)
-        .eq('project_id', params.id)
+        .eq('project_id', id)
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(queryParams.asset_limit!);

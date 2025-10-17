@@ -64,7 +64,7 @@ export async function GET(
           created_at
         )
       `)
-      .eq('child_asset_id', params.id);
+      .eq('child_asset_id', id);
 
     if (parentError) {
       console.error('Error fetching parent relationships:', parentError);
@@ -85,7 +85,7 @@ export async function GET(
           created_at
         )
       `)
-      .eq('parent_asset_id', params.id);
+      .eq('parent_asset_id', id);
 
     if (childError) {
       console.error('Error fetching child relationships:', childError);
@@ -95,7 +95,7 @@ export async function GET(
     const { data: versions, error: versionsError } = await supabaseAdmin
       .from('asset_versions')
       .select('*')
-      .eq('asset_id', params.id)
+      .eq('asset_id', id)
       .order('version_number', { ascending: false });
 
     if (versionsError) {
@@ -171,7 +171,7 @@ export async function GET(
 // ============================================================================
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -182,13 +182,14 @@ export async function PATCH(
       }, { status: 401 });
     }
 
+    const { id } = await params;
     const body: UpdateAssetRequest = await req.json();
 
     // Validate the asset exists and belongs to the user
     const { data: existingAsset, error: fetchError } = await supabaseAdmin
       .from('assets')
       .select('id, project_id, folder_id')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -275,7 +276,7 @@ export async function PATCH(
     const { data: updatedAsset, error: updateError } = await supabaseAdmin
       .from('assets')
       .update(updateData)
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .select('*')
       .single();
@@ -307,7 +308,7 @@ export async function PATCH(
 // ============================================================================
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -318,6 +319,7 @@ export async function DELETE(
       }, { status: 401 });
     }
 
+    const { id } = await params;
     const { searchParams } = new URL(req.url);
     const permanent = searchParams.get('permanent') === 'true';
 
@@ -325,7 +327,7 @@ export async function DELETE(
     const { data: existingAsset, error: fetchError } = await supabaseAdmin
       .from('assets')
       .select('id, asset_type, file_url, thumbnail_url')
-      .eq('id', params.id)
+      .eq('id', id)
       .eq('user_id', session.user.id)
       .maybeSingle();
 
@@ -350,7 +352,7 @@ export async function DELETE(
       const { error: deleteError } = await supabaseAdmin
         .from('assets')
         .delete()
-        .eq('id', params.id)
+        .eq('id', id)
         .eq('user_id', session.user.id);
 
       if (deleteError) {
@@ -372,7 +374,7 @@ export async function DELETE(
           status: 'deleted',
           updated_at: new Date().toISOString()
         })
-        .eq('id', params.id)
+        .eq('id', id)
         .eq('user_id', session.user.id);
 
       if (deleteError) {
@@ -387,7 +389,7 @@ export async function DELETE(
     return NextResponse.json<ApiResponse>({
       success: true,
       data: {
-        id: params.id,
+        id: id,
         action: permanent ? 'deleted' : 'soft_deleted'
       }
     });

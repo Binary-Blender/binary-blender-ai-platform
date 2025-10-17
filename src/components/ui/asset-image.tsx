@@ -6,6 +6,7 @@ import { AssetType } from '@/lib/types/asset-repository'
 
 interface AssetImageProps {
   src?: string | null
+  fallbackSrc?: string | null  // Try this if primary src fails
   alt: string
   assetType: AssetType
   className?: string
@@ -14,6 +15,7 @@ interface AssetImageProps {
 
 export default function AssetImage({
   src,
+  fallbackSrc,
   alt,
   assetType,
   className = "w-full h-full object-cover",
@@ -21,6 +23,7 @@ export default function AssetImage({
 }: AssetImageProps) {
   const [imageError, setImageError] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [currentSrc, setCurrentSrc] = useState(src)
 
   const getAssetIcon = (type: AssetType) => {
     switch (type) {
@@ -48,8 +51,8 @@ export default function AssetImage({
     }
   }
 
-  // If no src or image failed to load, show fallback
-  if (!src || imageError) {
+  // If no src or both URLs failed, show fallback
+  if (!currentSrc || (imageError && !fallbackSrc)) {
     return (
       <div className="w-full h-full flex items-center justify-center">
         <div className={`rounded-lg flex items-center justify-center ${getAssetTypeColor(assetType)}`}>
@@ -67,20 +70,30 @@ export default function AssetImage({
         </div>
       )}
       <img
-        src={src}
+        src={currentSrc}
         alt={alt}
         className={className}
         onLoad={() => {
           setIsLoading(false)
           if (process.env.NODE_ENV === 'development') {
-            console.log('✅ Image loaded:', src)
+            console.log('✅ Image loaded:', currentSrc)
           }
         }}
         onError={() => {
           setIsLoading(false)
-          setImageError(true)
-          if (process.env.NODE_ENV === 'development') {
-            console.error('❌ Image failed to load:', src)
+          // Try fallback URL if available and we haven't tried it yet
+          if (fallbackSrc && currentSrc !== fallbackSrc) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('🔄 Trying fallback URL:', fallbackSrc)
+            }
+            setCurrentSrc(fallbackSrc)
+            setIsLoading(true)
+            setImageError(false)
+          } else {
+            setImageError(true)
+            if (process.env.NODE_ENV === 'development') {
+              console.error('❌ Image failed to load:', currentSrc)
+            }
           }
         }}
         style={{ display: isLoading ? 'none' : 'block' }}

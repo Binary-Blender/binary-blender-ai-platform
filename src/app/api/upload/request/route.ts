@@ -1,103 +1,146 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { generateAssetId, generatePresignedUploadUrl, validateFile } from '@/lib/storage';
-import {
-  ApiResponse,
-  UploadRequest,
-  UploadResponse,
-  AssetType
-} from '@/lib/types/asset-repository';
+import { getPresignedUploadUrl, generateUploadKey, getS3PublicUrl } from '@/lib/s3-upload';
+import { supabaseAdmin } from '@/lib/supabase';
 
 // ============================================================================
 // POST /api/upload/request - Generate presigned upload URL
 // ============================================================================
+interface UploadRequestBody {
+  file_type: string
+  file_size: number
+  project_id?: string
+  asset_type: 'image' | 'video' | 'audio' | 'text'
+  file_name?: string
+}
+
+interface UploadRequestResponse {
+  upload_url: string
+  asset_id: string
+  file_key: string
+  thumbnail_key?: string
+  file_url: string
+  thumbnail_url?: string
+  expires_at: string
+}
+
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
-      return NextResponse.json<ApiResponse>({
+      return NextResponse.json({
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'Authentication required' }
       }, { status: 401 });
     }
 
-    const body: UploadRequest = await req.json();
+    const body: UploadRequestBody = await req.json();
 
-    // Validate required fields
-    if (!body.file_type) {
-      return NextResponse.json<ApiResponse>({
+    // Validate request body
+    if (!body.file_type || !body.file_size || !body.asset_type) {
+      return NextResponse.json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'file_type is required' }
+        error: { code: 'BAD_REQUEST', message: 'file_type, file_size, and asset_type are required' }
       }, { status: 400 });
     }
 
-    if (!body.file_size || body.file_size <= 0) {
-      return NextResponse.json<ApiResponse>({
+    // Validate file size (100MB limit)
+    const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    if (body.file_size > MAX_FILE_SIZE) {
+      return NextResponse.json({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'file_size must be greater than 0' }
+        error: { code: 'FILE_TOO_LARGE', message: 'File size exceeds 100MB limit' }
       }, { status: 400 });
     }
 
-    if (!body.asset_type) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'asset_type is required' }
-      }, { status: 400 });
-    }
-
-    // Generate a temporary filename from the MIME type
-    const filename = generateFilenameFromMimeType(body.file_type, body.asset_type);
-
-    // Validate file type and size
-    const validation = await validateFile(filename, body.file_size, body.asset_type);
-    if (!validation.isValid) {
-      return NextResponse.json<ApiResponse>({
-        success: false,
-        error: { code: 'INVALID_FILE', message: validation.error || 'Invalid file' }
-      }, { status: 400 });
-    }
-
-    // Generate asset ID
-    const assetId = generateAssetId();
-
-    // Generate presigned upload URL
-    const uploadInfo = await generatePresignedUploadUrl(
-      session.user.id,
-      assetId,
-      body.asset_type,
-      filename,
-      body.file_type,
-      body.file_size
-    );
-
-    const response: UploadResponse = {
-      upload_url: uploadInfo.uploadUrl,
-      asset_id: assetId,
-      expires_at: uploadInfo.expiresAt.toISOString(),
+    // Validate file type
+    const allowedMimeTypes = {
+      image: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'],
+      video: ['video/mp4', 'video/mov', 'video/avi', 'video/webm'],
+      audio: ['audio/mp3', 'audio/wav', 'audio/m4a', 'audio/aac'],
+      text: ['text/plain', 'text/markdown', 'application/json']
     };
 
+    if (!allowedMimeTypes[body.asset_type].includes(body.file_type)) {
+      return NextResponse.json({
+        success: false,
+        error: {
+          code: 'INVALID_FILE_TYPE',
+          message: `File type ${body.file_type} not allowed for ${body.asset_type} assets`
+        }
+      }, { status: 400 });
+    }
+
+    // Extract file extension from MIME type
+    const extensionMap: Record<string, string> = {
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/gif': 'gif',
+      'video/mp4': 'mp4',
+      'video/mov': 'mov',
+      'video/avi': 'avi',
+      'video/webm': 'webm',
+      'audio/mp3': 'mp3',
+      'audio/wav': 'wav',
+      'audio/m4a': 'm4a',
+      'audio/aac': 'aac',
+      'text/plain': 'txt',
+      'text/markdown': 'md',
+      'application/json': 'json'
+    };
+
+    const fileExtension = extensionMap[body.file_type] || 'bin';
+
+    // Generate upload keys and URLs
+    const { assetId, fileKey, thumbnailKey } = generateUploadKey(
+      session.user.id,
+      body.asset_type,
+      fileExtension
+    );
+
+    // Generate presigned URL for file upload (expires in 1 hour)
+    const expiresIn = 3600; // 1 hour
+    const uploadUrl = await getPresignedUploadUrl(fileKey, body.file_type, expiresIn);
+
+    // Generate public URLs (these will be valid after upload)
+    const fileUrl = getS3PublicUrl(fileKey);
+    const thumbnailUrl = body.asset_type !== 'text' ? getS3PublicUrl(thumbnailKey) : undefined;
+
+    const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+
     // Store upload session in database for tracking
-    // This helps us clean up incomplete uploads and associate them with assets later
     await storeUploadSession(session.user.id, assetId, {
       file_type: body.file_type,
       file_size: body.file_size,
       asset_type: body.asset_type,
       project_id: body.project_id,
-      upload_url: uploadInfo.uploadUrl,
-      file_path: uploadInfo.filePath,
-      public_url: uploadInfo.publicUrl,
-      expires_at: uploadInfo.expiresAt,
+      file_key: fileKey,
+      thumbnail_key: thumbnailKey,
+      file_url: fileUrl,
+      thumbnail_url: thumbnailUrl,
     });
 
-    return NextResponse.json<ApiResponse<UploadResponse>>({
+    const response: UploadRequestResponse = {
+      upload_url: uploadUrl,
+      asset_id: assetId,
+      file_key: fileKey,
+      thumbnail_key: body.asset_type !== 'text' ? thumbnailKey : undefined,
+      file_url: fileUrl,
+      thumbnail_url: thumbnailUrl,
+      expires_at: expiresAt
+    };
+
+    return NextResponse.json({
       success: true,
       data: response
     });
 
   } catch (error) {
-    console.error('Error in POST /api/upload/request:', error);
-    return NextResponse.json<ApiResponse>({
+    console.error('Error generating upload URL:', error);
+    return NextResponse.json({
       success: false,
       error: { code: 'INTERNAL_ERROR', message: 'Failed to generate upload URL' }
     }, { status: 500 });
@@ -108,51 +151,22 @@ export async function POST(req: NextRequest) {
 // Helper Functions
 // ============================================================================
 
-function generateFilenameFromMimeType(mimeType: string, assetType: AssetType): string {
-  const timestamp = Date.now();
-
-  // Map MIME types to file extensions
-  const mimeToExtension: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/jpg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'video/mp4': 'mp4',
-    'video/mov': 'mov',
-    'video/avi': 'avi',
-    'video/webm': 'webm',
-    'audio/mp3': 'mp3',
-    'audio/mpeg': 'mp3',
-    'audio/wav': 'wav',
-    'audio/aac': 'aac',
-    'audio/ogg': 'ogg',
-    'text/plain': 'txt',
-    'text/markdown': 'md',
-    'application/json': 'json',
-  };
-
-  const extension = mimeToExtension[mimeType.toLowerCase()] || 'bin';
-  return `${assetType}-${timestamp}.${extension}`;
-}
-
 async function storeUploadSession(
   userId: string,
   assetId: string,
   uploadData: {
     file_type: string;
     file_size: number;
-    asset_type: AssetType;
+    asset_type: 'image' | 'video' | 'audio' | 'text';
     project_id?: string;
-    upload_url: string;
-    file_path: string;
-    public_url: string;
-    expires_at: Date;
+    file_key: string;
+    thumbnail_key?: string;
+    file_url: string;
+    thumbnail_url?: string;
   }
 ) {
   try {
-    // For now, we'll use a simple approach and create an incomplete asset record
-    // In production, you might want a separate upload_sessions table
+    // Create an incomplete asset record to track the upload session
     const { data, error } = await supabaseAdmin
       .from('assets')
       .insert({
@@ -160,7 +174,8 @@ async function storeUploadSession(
         user_id: userId,
         project_id: uploadData.project_id || null,
         asset_type: uploadData.asset_type,
-        file_url: uploadData.public_url,
+        file_url: uploadData.file_url,
+        thumbnail_url: uploadData.thumbnail_url,
         file_size_bytes: uploadData.file_size,
         mime_type: uploadData.file_type,
         generation_params: {
@@ -168,6 +183,8 @@ async function storeUploadSession(
           uploaded_at: new Date().toISOString(),
           file_type: uploadData.file_type,
           file_size: uploadData.file_size,
+          file_key: uploadData.file_key,
+          thumbnail_key: uploadData.thumbnail_key,
         },
         credits_used: 0,
         name: `Uploading ${uploadData.asset_type}...`,
@@ -176,11 +193,10 @@ async function storeUploadSession(
 
     if (error) {
       console.error('Error storing upload session:', error);
+    } else {
+      console.log(`✅ Created upload session for asset ${assetId}`);
     }
   } catch (error) {
     console.error('Error in storeUploadSession:', error);
   }
 }
-
-// Note: Import supabaseAdmin at the top of the file
-import { supabaseAdmin } from '@/lib/supabase';

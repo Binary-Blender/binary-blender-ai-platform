@@ -1,39 +1,24 @@
 import { NextAuthOptions } from 'next-auth'
 import { SupabaseAdapter } from '@auth/supabase-adapter'
+import GoogleProvider from 'next-auth/providers/google'
 import { supabase, supabaseAdmin } from './supabase'
-
-// Custom Skool OAuth provider (will need to be configured based on Skool's actual OAuth implementation)
-const SkoolProvider = {
-  id: 'skool',
-  name: 'Skool',
-  type: 'oauth' as const,
-  clientId: process.env.SKOOL_CLIENT_ID,
-  clientSecret: process.env.SKOOL_CLIENT_SECRET,
-  authorization: {
-    url: 'https://www.skool.com/oauth/authorize', // This is hypothetical - needs real Skool OAuth endpoints
-    params: {
-      scope: 'read:user read:membership',
-      response_type: 'code',
-    },
-  },
-  token: 'https://www.skool.com/oauth/token', // Hypothetical
-  userinfo: 'https://www.skool.com/api/me', // Hypothetical
-  profile(profile: any) {
-    return {
-      id: profile.id,
-      name: profile.display_name || profile.name,
-      email: profile.email,
-      image: profile.avatar_url,
-      skool_user_id: profile.id,
-      membership_tier: profile.membership_tier || 'basic',
-    }
-  },
-}
 
 export const authOptions: NextAuthOptions = {
   providers: [
-    SkoolProvider,
-    // Fallback for development - remove in production
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      profile(profile) {
+        return {
+          id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture,
+          membership_tier: 'basic', // Default tier for all users
+        }
+      },
+    }),
+    // Development provider for testing
     ...(process.env.NODE_ENV === 'development' ? [{
       id: 'development',
       name: 'Development Login',
@@ -49,7 +34,6 @@ export const authOptions: NextAuthOptions = {
           id: 'dev-user-1',
           email: credentials.email,
           name: credentials.name || 'Development User',
-          skool_user_id: 'dev-user-1',
           membership_tier: 'premium',
         }
       },
@@ -64,28 +48,17 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async signIn({ user, account, profile }) {
-      if (account?.provider === 'skool') {
-        // Verify Skool membership is active
-        // This would need to call Skool's API to verify membership status
-        return true // For now, allow all Skool users
-      }
-
-      if (account?.provider === 'development') {
-        return true // Allow development login
-      }
-
+      // Allow all authenticated users from our configured providers
       return true
     },
     async jwt({ token, user, account }) {
       if (user) {
-        token.skool_user_id = user.skool_user_id
         token.membership_tier = user.membership_tier
       }
       return token
     },
     async session({ session, token }) {
       if (token) {
-        session.user.skool_user_id = token.skool_user_id as string
         session.user.membership_tier = token.membership_tier as string
 
         // Try to get the actual UUID from the database with short timeout
@@ -96,7 +69,6 @@ export const authOptions: NextAuthOptions = {
               email: session.user.email,
               name: session.user.name,
               image: session.user.image,
-              skool_user_id: token.skool_user_id as string,
               membership_tier: token.membership_tier as string
             }),
             new Promise((_, reject) =>
@@ -123,11 +95,11 @@ export const authOptions: NextAuthOptions = {
 
 async function syncUserWithDatabase(user: any) {
   try {
-    // Check if user exists in our database
+    // Check if user exists in our database by email
     const { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('*')
-      .eq('skool_user_id', user.skool_user_id)
+      .eq('email', user.email)
       .single()
 
     if (!existingUser) {
@@ -135,7 +107,6 @@ async function syncUserWithDatabase(user: any) {
       const { data: newUser, error } = await supabaseAdmin
         .from('users')
         .insert({
-          skool_user_id: user.skool_user_id,
           email: user.email,
           display_name: user.name,
           avatar_url: user.image,
@@ -164,13 +135,12 @@ async function syncUserWithDatabase(user: any) {
       const { data: updatedUser } = await supabaseAdmin
         .from('users')
         .update({
-          email: user.email,
           display_name: user.name,
           avatar_url: user.image,
           membership_tier: user.membership_tier,
           last_login_at: new Date().toISOString(),
         })
-        .eq('skool_user_id', user.skool_user_id)
+        .eq('email', user.email)
         .select('*')
         .single()
 
@@ -185,7 +155,6 @@ async function syncUserWithDatabase(user: any) {
 // Extend NextAuth types
 declare module 'next-auth' {
   interface User {
-    skool_user_id: string
     membership_tier: string
   }
 
@@ -195,7 +164,6 @@ declare module 'next-auth' {
       email: string
       name: string
       image?: string
-      skool_user_id: string
       membership_tier: string
     }
   }
@@ -203,7 +171,6 @@ declare module 'next-auth' {
 
 declare module 'next-auth/jwt' {
   interface JWT {
-    skool_user_id: string
     membership_tier: string
   }
 }

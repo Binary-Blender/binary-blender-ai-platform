@@ -220,6 +220,39 @@ export async function POST(req: NextRequest) {
         } else {
           assetId = asset.id
           console.log('Successfully saved asset to repository:', assetId)
+
+          // Now upload the image to S3 and update the asset with permanent URLs
+          try {
+            const { uploadUrlToS3, generateAssetKey } = await import('@/lib/s3-upload')
+
+            // Generate S3 key for the image
+            const imageKey = generateAssetKey(session.user.id, assetId, 'file', imageUrls[0])
+
+            // Upload the image to S3
+            const uploadResult = await uploadUrlToS3(imageUrls[0], imageKey, 'image/png')
+
+            if (uploadResult.success && uploadResult.url) {
+              // Update the asset with the S3 URLs
+              const { error: updateError } = await supabaseAdmin
+                .from('assets')
+                .update({
+                  file_url: uploadResult.url,
+                  thumbnail_url: uploadResult.url // For images, thumbnail is the same as the main file
+                })
+                .eq('id', assetId)
+
+              if (updateError) {
+                console.error('Error updating asset with S3 URLs:', updateError)
+              } else {
+                console.log('Successfully updated asset with S3 URLs:', uploadResult.url)
+              }
+            } else {
+              console.error('Failed to upload image to S3:', uploadResult.error)
+            }
+          } catch (s3Error) {
+            console.error('Error uploading to S3:', s3Error)
+            // Don't fail the generation if S3 upload fails
+          }
         }
       } catch (assetSaveError) {
         console.error('Error saving to Asset Repository:', assetSaveError)

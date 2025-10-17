@@ -34,6 +34,7 @@ import AssetDetailsModal from '@/components/assets/asset-details-modal'
 import FolderNavigation from '@/components/assets/folder-navigation'
 import SearchFilter from '@/components/assets/search-filter'
 import CreateProjectModal from '@/components/assets/create-project-modal'
+import AssetMigrationPanel from '@/components/assets/asset-migration-panel'
 
 export default function AssetsPage() {
   const { data: session } = useSession()
@@ -321,6 +322,7 @@ export default function AssetsPage() {
                   <h2 className="text-lg font-semibold text-white">Unorganized Assets</h2>
                   <p className="text-sm text-gray-400">Assets not assigned to any project</p>
                 </div>
+
 
                 {/* Asset Gallery for Unorganized Assets */}
                 <div className="flex-1 overflow-auto">

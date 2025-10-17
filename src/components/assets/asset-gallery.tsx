@@ -43,12 +43,6 @@ export default function AssetGallery({
   const [selectedAssets, setSelectedAssets] = useState<Set<string>>(new Set())
 
 
-  // Show debug info only in development mode
-  const debugInfo = process.env.NODE_ENV === 'development' ? (
-    <div className="bg-yellow-900/20 border border-yellow-600 text-yellow-400 p-2 mb-4 rounded text-sm">
-      Dev: {assets.length} assets, {loading ? 'loading' : 'loaded'}
-    </div>
-  ) : null
 
   const getAssetIcon = (assetType: AssetType) => {
     switch (assetType) {
@@ -124,7 +118,6 @@ export default function AssetGallery({
   if (loading && assets.length === 0) {
     return (
       <div className="p-6">
-        {debugInfo}
         <div className="text-center">
           <div className="w-16 h-16 bg-gray-700 rounded-lg flex items-center justify-center mx-auto mb-4">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-binary-orange"></div>
@@ -140,8 +133,7 @@ export default function AssetGallery({
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="w-full max-w-md">
-          {debugInfo}
-          <div className="text-center">
+            <div className="text-center">
             <div className="w-16 h-16 bg-gray-700 rounded-lg flex items-center justify-center mx-auto mb-4">
               <Image className="w-8 h-8 text-gray-400" />
             </div>
@@ -158,7 +150,6 @@ export default function AssetGallery({
   if (viewMode === 'grid') {
     return (
       <div className="p-6">
-        {debugInfo}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {assets.map((asset) => (
             <Card
@@ -171,6 +162,7 @@ export default function AssetGallery({
                 <div className="aspect-square bg-gray-700 rounded-lg mb-3 overflow-hidden relative">
                   <AssetImage
                     src={asset.thumbnail_url}
+                    fallbackSrc={asset.file_url}
                     alt={asset.name || 'Asset'}
                     assetType={asset.asset_type}
                     className="w-full h-full object-cover"
@@ -281,7 +273,6 @@ export default function AssetGallery({
   // List View
   return (
     <div className="p-6">
-      {debugInfo}
       <div className="space-y-3">
         {assets.map((asset) => (
           <Card
@@ -295,6 +286,7 @@ export default function AssetGallery({
                 <div className="w-16 h-16 bg-gray-700 rounded-lg overflow-hidden flex-shrink-0">
                   <AssetImage
                     src={asset.thumbnail_url}
+                    fallbackSrc={asset.file_url}
                     alt={asset.name || 'Asset'}
                     assetType={asset.asset_type}
                     className="w-full h-full object-cover"
