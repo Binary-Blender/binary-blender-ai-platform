@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createClient } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 /**
  * Orchestration Engine - Workflow Submission Endpoint
@@ -63,9 +63,8 @@ export async function POST(req: NextRequest) {
     const priority = body.priority && body.priority >= 1 && body.priority <= 5 ? body.priority : 3;
 
     // 3. Create workflow record in database
-    const supabase = createClient();
 
-    const { data: workflow, error: dbError } = await supabase
+    const { data: workflow, error: dbError } = await supabaseAdmin
       .from('workflows')
       .insert({
         user_id: session.user.id,
@@ -122,7 +121,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Update workflow status to 'analyzing'
-    await supabase
+    await supabaseAdmin
       .from('workflows')
       .update({ status: 'analyzing' })
       .eq('id', workflow.id);

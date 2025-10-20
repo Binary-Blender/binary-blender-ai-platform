@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { createClient } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 
 /**
  * Orchestration Engine - Workflow Status Endpoint
@@ -27,9 +27,7 @@ export async function GET(
     const workflowId = params.id;
 
     // 2. Fetch workflow from database
-    const supabase = createClient();
-
-    const { data: workflow, error: workflowError } = await supabase
+    const { data: workflow, error: workflowError } = await supabaseAdmin
       .from('workflows')
       .select('*')
       .eq('id', workflowId)
@@ -44,7 +42,7 @@ export async function GET(
     }
 
     // 3. Fetch related tasks
-    const { data: tasks, error: tasksError } = await supabase
+    const { data: tasks, error: tasksError } = await supabaseAdmin
       .from('workflow_tasks')
       .select('*')
       .eq('workflow_id', workflowId)
